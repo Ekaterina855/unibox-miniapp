@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniBox - Умный органайзер</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Шапка */
+        .header {
+            background-color: #2AABEE;
+            color: white;
+            padding: 16px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Контейнер с папками и сообщениями */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        /* Боковая панель с папками */
+        .folders-panel {
+            width: 35%;
+            background-color: white;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        
+        /* Панель с сообщениями */
+        .messages-panel {
+            width: 65%;
+            background-color: #fafafa;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        
+        /* Элемент папки */
+        .folder-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            border-radius: 12px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-weight: 500;
+        }
+        
+        .folder-item:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .folder-item.active {
+            background-color: #e3f2fd;
+            color: #2AABEE;
+            font-weight: 600;
+        }
+        
+        .folder-icon {
+            margin-right: 12px;
+            font-size: 20px;
+        }
+        
+        .folder-name {
+            flex: 1;
+        }
+        
+        .folder-count {
+            background-color: #e0e0e0;
+            border-radius: 20px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        /* Карточка сообщения */
+        .message-card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border-left: 4px solid transparent;
+        }
+        
+        .message-card.urgent {
+            border-left-color: #f44336;
+        }
+        
+        .message-card.project {
+            border-left-color: #2196f3;
+        }
+        
+        .message-card.personal {
+            border-left-color: #4caf50;
+        }
+        
+        .message-card.spam {
+            border-left-color: #9e9e9e;
+        }
+        
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .message-sender {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .message-source {
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .message-text {
+            font-size: 15px;
+            line-height: 1.4;
+            color: #222;
+            margin-bottom: 8px;
+        }
+        
+        .message-footer {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #999;
+        }
+        
+        .message-category {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .category-urgent {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        .category-project {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+        }
+        
+        .category-personal {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .category-spam {
+            background-color: #eeeeee;
+            color: #616161;
+        }
+        
+        /* Загрузка */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        /* Пустое состояние */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        📬 UniBox — Умный органайзер
+    </div>
+    
+    <div class="main-container">
+        <!-- Левая панель с папками -->
+        <div class="folders-panel" id="foldersPanel">
+            <div class="loading" id="foldersLoading">Загрузка папок...</div>
+        </div>
+        
+        <!-- Правая панель с сообщениями -->
+        <div class="messages-panel" id="messagesPanel">
+            <div class="empty-state" id="messagesEmpty">
+                Выберите папку слева
+            </div>
+        </div>
+    </div>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        // Параметры Airtable (ЗАМЕНИТЕ НА СВОИ!)
+        const AIRTABLE_API_KEY = 'ВАШ_API_КЛЮЧ'; // Токен из Developer Hub
+        const AIRTABLE_BASE_ID = 'ВАШ_BASE_ID'; // appXXXXXXXXX
+        const AIRTABLE_TABLE_NAME = 'Messages';
+        
+        // Получаем данные о пользователе из Telegram
+        const tg = window.Telegram.WebApp;
+        const user = tg.initDataUnsafe?.user;
+        const userId = user?.id?.toString();
+        
+        console.log('Telegram User:', user);
+        console.log('User ID:', userId);
+        
+        // Маппинг категорий на русские названия
+        const categoryMapping = {
+            'срочное': 'urgent',
+            'проект': 'project',
+            'личное': 'personal',
+            'флуд': 'spam'
+        };
+        
+        const categoryNames = {
+            'urgent': '📌 Срочное',
+            'project': '📋 Проект',
+            'personal': '💬 Личное',
+            'spam': '🌀 Флуд'
+        };
+        
+        // Цвета для категорий
+        const categoryColors = {
+            'urgent': 'urgent',
+            'project': 'project',
+            'personal': 'personal',
+            'spam': 'spam'
+        };
+        
+        let allMessages = [];
+        let currentCategory = null;
+        
+        // Загружаем сообщения из Airtable
+        async function loadMessages() {
+            if (!userId) {
+                console.error('Не удалось получить ID пользователя');
+                document.getElementById('foldersPanel').innerHTML = '<div class="empty-state">Ошибка: не удалось определить пользователя</div>';
+                return;
+            }
+            
+            try {
+                const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_NAME}?filterByFormula={User ID}="${userId}"&sort%5B0%5D%5Bfield%5D=Created%20At&sort%5B0%5D%5Bdirection%5D=desc`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${AIRTABLE_API_KEY}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Airtable data:', data);
+                
+                // Преобразуем данные
+                allMessages = data.records.map(record => ({
+                    id: record.id,
+                    text: record.fields.Text || 'Без текста',
+                    category: record.fields.Category || 'флуд',
+                    sender: record.fields.Sender || 'Неизвестно',
+                    chat: record.fields.Chat || 'Без чата',
+                    source: record.fields.Source || 'telegram',
+                    created: record.fields['Created At'] || new Date().toISOString()
+                }));
+                
+                renderFolders();
+                
+            } catch (error) {
+                console.error('Ошибка загрузки:', error);
+                document.getElementById('foldersPanel').innerHTML = `<div class="empty-state">Ошибка загрузки: ${error.message}</div>`;
+            }
+        }
+        
+        // Отображаем папки со счетчиками
+        function renderFolders() {
+            // Считаем сообщения по категориям
+            const counts = {
+                'urgent': allMessages.filter(m => m.category === 'срочное').length,
+                'project': allMessages.filter(m => m.category === 'проект').length,
+                'personal': allMessages.filter(m => m.category === 'личное').length,
+                'spam': allMessages.filter(m => m.category === 'флуд').length
+            };
+            
+            const foldersHtml = `
+                <div class="folder-item ${currentCategory === 'urgent' ? 'active' : ''}" onclick="selectCategory('urgent')">
+                    <span class="folder-icon">📌</span>
+                    <span class="folder-name">Срочное</span>
+                    <span class="folder-count">${counts.urgent}</span>
+                </div>
+                <div class="folder-item ${currentCategory === 'project' ? 'active' : ''}" onclick="selectCategory('project')">
+                    <span class="folder-icon">📋</span>
+                    <span class="folder-name">Проект</span>
+                    <span class="folder-count">${counts.project}</span>
+                </div>
+                <div class="folder-item ${currentCategory === 'personal' ? 'active' : ''}" onclick="selectCategory('personal')">
+                    <span class="folder-icon">💬</span>
+                    <span class="folder-name">Личное</span>
+                    <span class="folder-count">${counts.personal}</span>
+                </div>
+                <div class="folder-item ${currentCategory === 'spam' ? 'active' : ''}" onclick="selectCategory('spam')">
+                    <span class="folder-icon">🌀</span>
+                    <span class="folder-name">Флуд</span>
+                    <span class="folder-count">${counts.spam}</span>
+                </div>
+            `;
+            
+            document.getElementById('foldersPanel').innerHTML = foldersHtml;
+            
+            // Если есть выбранная категория, показываем сообщения
+            if (currentCategory) {
+                renderMessages(currentCategory);
+            }
+        }
+        
+        // Выбор категории
+        window.selectCategory = function(category) {
+            currentCategory = category;
+            renderFolders(); // обновим активное состояние
+            renderMessages(category);
+        };
+        
+        // Отображаем сообщения выбранной категории
+        function renderMessages(category) {
+            const filtered = allMessages.filter(m => {
+                const mappedCat = categoryMapping[m.category] || 'spam';
+                return mappedCat === category;
+            });
+            
+            if (filtered.length === 0) {
+                document.getElementById('messagesPanel').innerHTML = '<div class="empty-state">Нет сообщений в этой папке</div>';
+                return;
+            }
+            
+            const messagesHtml = filtered.map(msg => {
+                const categoryKey = categoryMapping[msg.category] || 'spam';
+                const categoryClass = categoryColors[categoryKey] || 'spam';
+                
+                // Форматируем дату
+                const date = new Date(msg.created);
+                const formattedDate = date.toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                return `
+                    <div class="message-card ${categoryClass}">
+                        <div class="message-header">
+                            <span class="message-sender">${msg.sender}</span>
+                            <span class="message-source">${msg.source === 'telegram' ? '✈️ Telegram' : '📧 Почта'}</span>
+                        </div>
+                        <div class="message-text">${msg.text}</div>
+                        <div class="message-footer">
+                            <span class="message-category category-${categoryClass}">${categoryNames[categoryKey]}</span>
+                            <span>${formattedDate}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('messagesPanel').innerHTML = messagesHtml;
+        }
+        
+        // Загружаем данные при старте
+        loadMessages();
+        
+    </script>
+</body>
+</html>
